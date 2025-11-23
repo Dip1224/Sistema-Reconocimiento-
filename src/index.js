@@ -6,6 +6,9 @@ import asistenciaRoutes from "./routes/asistencia.js";
 import incidenciasRoutes from "./routes/incidencias.js";
 import horariosRoutes from "./routes/horarios.js";
 import plantillasRoutes from "./routes/plantillas.js";
+import zoneRoutes from "./routes/zone.js";
+import branchesRoutes from "./routes/branches.js";
+import checkinsRoutes from "./routes/checkins.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -34,6 +37,9 @@ app.use("/asistencia", asistenciaRoutes);
 app.use("/incidencias", incidenciasRoutes);
 app.use("/horarios", horariosRoutes);
 app.use("/plantillas", plantillasRoutes);
+app.use("/api/branches", branchesRoutes);
+app.use("/api/zone", zoneRoutes);
+app.use("/api/checkins", checkinsRoutes);
 
 const PORT = process.env.PORT || 3000;
 
