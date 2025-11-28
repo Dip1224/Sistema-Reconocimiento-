@@ -70,21 +70,6 @@ export async function registrarEmpleado(req, res) {
       return res.status(500).json({ error: "Tabla de usuarios no configurada" });
     }
 
-    const { data: existingUsers, error: usernameLookupError } = await supabase
-      .from(USUARIOS_TABLE)
-      .select("id_usuario")
-      .eq("username", usuario)
-      .limit(1);
-
-    if (usernameLookupError) {
-      console.error("Error verificando disponibilidad de usuario:", usernameLookupError);
-      return res.status(500).json({ error: "No se pudo verificar el usuario" });
-    }
-
-    if (existingUsers && existingUsers.length) {
-      return res.status(409).json({ error: "El nombre de usuario ya existe" });
-    }
-
     const fotoArchivo = req.file;
 
     if (!fotoArchivo) {
@@ -162,8 +147,13 @@ export async function registrarEmpleado(req, res) {
         await supabase.from(EMPLEADOS_TABLE).delete().eq("id_empleado", empleadoCreado.id_empleado);
       }
       const pgCode = usuarioError?.code;
-      const status = pgCode === "23505" ? 409 : 500;
-      return res.status(status).json({
+      if (pgCode === "23505") {
+        return res.status(409).json({
+          error: "El nombre de usuario ya existe",
+          detalle: usuarioError.message || usuarioError.hint || usuarioError
+        });
+      }
+      return res.status(500).json({
         error: "Error creando usuario vinculado",
         detalle: usuarioError.message || usuarioError.hint || usuarioError
       });
