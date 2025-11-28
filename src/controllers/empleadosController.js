@@ -5,6 +5,20 @@ dotenv.config();
 
 const EMPLEADOS_TABLE = process.env.SUPABASE_EMPLEADOS_TABLE;
 const USUARIOS_TABLE = process.env.SUPABASE_USUARIOS_TABLE || "usuario";
+const DEFAULT_USER_PASSWORD = "123";
+
+function buildBaseUsername({ username, nombre, apellido, ci }) {
+  const raw = (username || `${nombre || ""}.${apellido || ""}`).trim();
+  const normalized = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "");
+
+  if (normalized) return normalized;
+  if (ci) return `user${ci}`;
+  return `user${Date.now()}`;
+}
 
 export async function listarEmpleados(_req, res) {
   try {
@@ -41,8 +55,7 @@ export async function registrarEmpleado(req, res) {
       contrasena
     } = req.body;
 
-    const usuario = (username || "").trim();
-    const clave = password || contrasena || "";
+    const clave = password || contrasena || DEFAULT_USER_PASSWORD;
     const rolId = id_rol ? Number(id_rol) : 2;
     const faltantes = [];
     if (!ci) faltantes.push("ci");
@@ -51,8 +64,6 @@ export async function registrarEmpleado(req, res) {
     if (!cargo) faltantes.push("cargo");
     if (!id_departamento) faltantes.push("id_departamento");
     if (!fecha_ingreso) faltantes.push("fecha_ingreso");
-    if (!usuario) faltantes.push("username");
-    if (!clave) faltantes.push("password");
 
     if (faltantes.length) {
       return res.status(400).json({ error: `Campos requeridos faltantes: ${faltantes.join(", ")}` });
@@ -127,19 +138,39 @@ export async function registrarEmpleado(req, res) {
       });
     }
 
-    const { data: usuarioCreado, error: usuarioError } = await supabase
-      .from(USUARIOS_TABLE)
-      .insert([
-        {
-          id_empleado: empleadoCreado.id_empleado,
-          id_rol: rolId,
-          username: usuario,
-          contrasena: clave,
-          id_estado: 1
-        }
-      ])
-      .select()
-      .single();
+    const baseUsername = buildBaseUsername({ username, nombre, apellido, ci });
+    let finalUsername = baseUsername;
+    let usuarioCreado = null;
+    let usuarioError = null;
+
+    for (let i = 0; i < 3; i += 1) {
+      const candidate = i === 0 ? finalUsername : `${baseUsername}${Math.floor(Math.random() * 900 + 100)}`;
+      const { data: insertedUser, error: insertError } = await supabase
+        .from(USUARIOS_TABLE)
+        .insert([
+          {
+            id_empleado: empleadoCreado.id_empleado,
+            id_rol: rolId,
+            username: candidate,
+            contrasena: clave,
+            id_estado: 1
+          }
+        ])
+        .select()
+        .single();
+
+      if (!insertError) {
+        usuarioCreado = insertedUser;
+        finalUsername = candidate;
+        break;
+      }
+
+      usuarioError = insertError;
+      const pgCode = insertError?.code;
+      if (pgCode !== "23505") {
+        break;
+      }
+    }
 
     if (usuarioError) {
       console.error("Error creando usuario:", usuarioError);
@@ -162,7 +193,7 @@ export async function registrarEmpleado(req, res) {
     res.json({
       mensaje: "Empleado y usuario registrados correctamente",
       empleado: data,
-      usuario: usuarioCreado,
+      usuario: { ...usuarioCreado, username: finalUsername, contrasena: undefined },
       foto_url: fotoURL
     });
   } catch (err) {
