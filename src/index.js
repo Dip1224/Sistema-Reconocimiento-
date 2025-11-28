@@ -9,6 +9,7 @@ import plantillasRoutes from "./routes/plantillas.js";
 import zoneRoutes from "./routes/zone.js";
 import branchesRoutes from "./routes/branches.js";
 import checkinsRoutes from "./routes/checkins.js";
+import rolesRoutes from "./routes/roles.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -40,6 +41,7 @@ app.use("/plantillas", plantillasRoutes);
 app.use("/api/branches", branchesRoutes);
 app.use("/api/zone", zoneRoutes);
 app.use("/api/checkins", checkinsRoutes);
+app.use("/roles", rolesRoutes);
 
 const PORT = process.env.PORT || 3000;
 
