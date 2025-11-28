@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const EMPLEADOS_TABLE = process.env.SUPABASE_EMPLEADOS_TABLE;
+const USUARIOS_TABLE = process.env.SUPABASE_USUARIOS_TABLE || "usuario";
 
 export async function listarEmpleados(_req, res) {
   try {
@@ -33,9 +34,16 @@ export async function registrarEmpleado(req, res) {
       apellido,
       cargo,
       id_departamento,
-      fecha_ingreso
+      fecha_ingreso,
+      id_rol,
+      username,
+      password,
+      contrasena
     } = req.body;
 
+    const usuario = (username || "").trim();
+    const clave = password || contrasena || "";
+    const rolId = id_rol ? Number(id_rol) : 2;
     const faltantes = [];
     if (!ci) faltantes.push("ci");
     if (!nombre) faltantes.push("nombre");
@@ -43,9 +51,38 @@ export async function registrarEmpleado(req, res) {
     if (!cargo) faltantes.push("cargo");
     if (!id_departamento) faltantes.push("id_departamento");
     if (!fecha_ingreso) faltantes.push("fecha_ingreso");
+    if (!usuario) faltantes.push("username");
+    if (!clave) faltantes.push("password");
 
     if (faltantes.length) {
       return res.status(400).json({ error: `Campos requeridos faltantes: ${faltantes.join(", ")}` });
+    }
+
+    if (!EMPLEADOS_TABLE) {
+      return res.status(500).json({ error: "Tabla de empleados no configurada" });
+    }
+
+    if (!Number.isInteger(rolId) || rolId <= 0) {
+      return res.status(400).json({ error: "id_rol invalido" });
+    }
+
+    if (!USUARIOS_TABLE) {
+      return res.status(500).json({ error: "Tabla de usuarios no configurada" });
+    }
+
+    const { data: existingUsers, error: usernameLookupError } = await supabase
+      .from(USUARIOS_TABLE)
+      .select("id_usuario")
+      .eq("username", usuario)
+      .limit(1);
+
+    if (usernameLookupError) {
+      console.error("Error verificando disponibilidad de usuario:", usernameLookupError);
+      return res.status(500).json({ error: "No se pudo verificar el usuario" });
+    }
+
+    if (existingUsers && existingUsers.length) {
+      return res.status(409).json({ error: "El nombre de usuario ya existe" });
     }
 
     const fotoArchivo = req.file;
@@ -97,9 +134,45 @@ export async function registrarEmpleado(req, res) {
       });
     }
 
+    const empleadoCreado = Array.isArray(data) ? data[0] : data;
+
+    if (!empleadoCreado?.id_empleado) {
+      return res.status(500).json({
+        error: "No se pudo obtener el ID del empleado creado"
+      });
+    }
+
+    const { data: usuarioCreado, error: usuarioError } = await supabase
+      .from(USUARIOS_TABLE)
+      .insert([
+        {
+          id_empleado: empleadoCreado.id_empleado,
+          id_rol: rolId,
+          username: usuario,
+          contrasena: clave,
+          id_estado: 1
+        }
+      ])
+      .select()
+      .single();
+
+    if (usuarioError) {
+      console.error("Error creando usuario:", usuarioError);
+      if (EMPLEADOS_TABLE) {
+        await supabase.from(EMPLEADOS_TABLE).delete().eq("id_empleado", empleadoCreado.id_empleado);
+      }
+      const pgCode = usuarioError?.code;
+      const status = pgCode === "23505" ? 409 : 500;
+      return res.status(status).json({
+        error: "Error creando usuario vinculado",
+        detalle: usuarioError.message || usuarioError.hint || usuarioError
+      });
+    }
+
     res.json({
-      mensaje: "Empleado registrado correctamente",
+      mensaje: "Empleado y usuario registrados correctamente",
       empleado: data,
+      usuario: usuarioCreado,
       foto_url: fotoURL
     });
   } catch (err) {
