@@ -89,9 +89,11 @@ export async function registrarEmpleado(req, res) {
 
     if (error) {
       console.error("Error registrando empleado:", error);
-      return res.status(500).json({
+      const pgCode = error?.code;
+      const status = pgCode === "23505" ? 409 : 500;
+      return res.status(status).json({
         error: "Error registrando empleado",
-        detalle: error.message || error
+        detalle: error.message || error.hint || error
       });
     }
 
