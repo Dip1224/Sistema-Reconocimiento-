@@ -145,27 +145,21 @@ export async function registrarEmpleado(req, res) {
 
     for (let i = 0; i < 3; i += 1) {
       const candidate = i === 0 ? finalUsername : `${baseUsername}${Math.floor(Math.random() * 900 + 100)}`;
-      const { data: insertedUser, error: insertError } = await supabase
-        .from(USUARIOS_TABLE)
-        .insert([
-          {
-            id_empleado: empleadoCreado.id_empleado,
-            id_rol: rolId,
-            username: candidate,
-            contrasena: clave,
-            id_estado: 1
-          }
-        ])
-        .select()
-        .single();
+      const { data: insertedUser, error: insertError } = await supabase.rpc("fn_crear_usuario", {
+        p_username: candidate,
+        p_password: clave,
+        p_id_rol: rolId,
+        p_id_empleado: empleadoCreado.id_empleado,
+        p_id_estado: 1
+      });
 
-      if (!insertError) {
-        usuarioCreado = insertedUser;
+      if (!insertError && insertedUser) {
+        usuarioCreado = Array.isArray(insertedUser) ? insertedUser[0] : insertedUser;
         finalUsername = candidate;
         break;
       }
 
-      usuarioError = insertError;
+      usuarioError = insertError || new Error("No se pudo crear el usuario");
       const pgCode = insertError?.code;
       if (pgCode !== "23505") {
         break;
