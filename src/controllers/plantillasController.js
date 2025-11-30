@@ -11,6 +11,7 @@ dotenv.config();
 const PLANTILLAS_TABLE = process.env.SUPABASE_PLANTILLAS_TABLE || "plantilla_facial";
 const EMPLEADOS_TABLE = process.env.SUPABASE_EMPLEADOS_TABLE || "empleado";
 const ASISTENCIA_TABLE = process.env.SUPABASE_ASISTENCIAS_TABLE || "asistencia";
+const HORARIOS_TABLE = process.env.SUPABASE_HORARIOS_TABLE || "horario";
 
 function parseEnvNumber(value, fallback) {
   const parsed = Number(value);
@@ -46,6 +47,70 @@ function buildClientDate({ clientTimestamp, timezoneOffsetMinutes }) {
     return new Date();
   }
   return date;
+}
+
+function obtenerDiaSemana(fechaISO) {
+  if (typeof fechaISO !== "string" || fechaISO.length < 10) return null;
+  const [anio, mes, dia] = fechaISO.split("-").map(Number);
+  if ([anio, mes, dia].some(Number.isNaN)) return null;
+  const date = new Date(Date.UTC(anio, mes - 1, dia));
+  if (Number.isNaN(date.getTime())) return null;
+  const diaLocal = date.getUTCDay();
+  return diaLocal === 0 ? 7 : diaLocal;
+}
+
+function timeToMinutes(timeString) {
+  if (typeof timeString !== "string") return null;
+  const [hours, minutes, seconds] = timeString.split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  const secs = Number.isNaN(seconds) ? 0 : seconds;
+  return hours * 60 + minutes + secs / 60;
+}
+
+function minutesToHHMM(totalMinutes) {
+  if (!Number.isFinite(totalMinutes)) return "";
+  const mins = Math.max(0, totalMinutes);
+  const hh = Math.floor(mins / 60)
+    .toString()
+    .padStart(2, "0");
+  const mm = Math.round(mins % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+async function obtenerHorarioSalida(id_empleado, fechaISO) {
+  if (!HORARIOS_TABLE || !id_empleado || !fechaISO) return null;
+  try {
+    const diaSemana = obtenerDiaSemana(fechaISO);
+    let horario = null;
+
+    if (diaSemana !== null) {
+      const { data } = await supabase
+        .from(HORARIOS_TABLE)
+        .select("hora_salida, tolerancia_minutos")
+        .eq("id_empleado", id_empleado)
+        .eq("dia_semana", diaSemana)
+        .maybeSingle();
+      horario = data;
+    }
+
+    if (!horario) {
+      const { data } = await supabase
+        .from(HORARIOS_TABLE)
+        .select("hora_salida, tolerancia_minutos")
+        .eq("id_empleado", id_empleado)
+        .order("dia_semana", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      horario = data;
+    }
+
+    return horario || null;
+  } catch (err) {
+    console.error("Error obteniendo horario de salida:", err);
+    return null;
+  }
 }
 
 function normalizeEmbedding(vector = []) {
@@ -382,6 +447,28 @@ export async function identificarPersona(req, res) {
     }
 
     if (!asistenciaHoy.hora_salida) {
+      const horarioSalida = await obtenerHorarioSalida(candidatoFinal, fecha);
+      if (horarioSalida?.hora_salida) {
+        const tolerancia = Number(horarioSalida.tolerancia_minutos) || 0;
+        const horaProgramada = timeToMinutes(horarioSalida.hora_salida);
+        const horaActual = timeToMinutes(hora);
+        const earliestAllowed = horaProgramada !== null ? horaProgramada - tolerancia : null;
+
+        if (earliestAllowed !== null && horaActual !== null && horaActual < earliestAllowed) {
+          const labelProgramada = horarioSalida.hora_salida?.slice?.(0, 5) || horarioSalida.hora_salida;
+          const labelPermitida =
+            earliestAllowed === null ? labelProgramada : minutesToHHMM(earliestAllowed);
+
+          return res.status(403).json({
+            identificado: true,
+            error: "No se puede registrar la salida antes del horario configurado",
+            detalle: `Salida programada ${labelProgramada}. Puedes marcar a partir de ${labelPermitida} (tolerancia ${tolerancia} min).`,
+            empleado,
+            accion: "rechazado"
+          });
+        }
+      }
+
       const salidaResult = await registrarSalidaAsistencia({
         id_empleado: candidatoFinal,
         fecha,
