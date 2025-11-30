@@ -57,7 +57,7 @@ router.post("/", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  const branchId = Number(req.params.id);
+  const branchId = req.params.id;
   if (!branchId) {
     return res.status(400).json({ error: "id invalido" });
   }
