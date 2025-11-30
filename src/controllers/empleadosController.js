@@ -139,55 +139,58 @@ export async function registrarEmpleado(req, res) {
     }
 
     const baseUsername = buildBaseUsername({ username, nombre, apellido, ci });
+    const crearUsuario = rolId === 1; // solo admins reciben cuenta de panel
     let finalUsername = baseUsername;
     let usuarioCreado = null;
-    let usuarioError = null;
 
-    for (let i = 0; i < 3; i += 1) {
-      const candidate = i === 0 ? finalUsername : `${baseUsername}${Math.floor(Math.random() * 900 + 100)}`;
-      const { data: insertedUser, error: insertError } = await supabase.rpc("fn_crear_usuario", {
-        p_username: candidate,
-        p_password: clave,
-        p_id_rol: rolId,
-        p_id_empleado: empleadoCreado.id_empleado,
-        p_id_estado: 1
-      });
+    if (crearUsuario) {
+      let usuarioError = null;
+      for (let i = 0; i < 3; i += 1) {
+        const candidate = i === 0 ? finalUsername : `${baseUsername}${Math.floor(Math.random() * 900 + 100)}`;
+        const { data: insertedUser, error: insertError } = await supabase.rpc("fn_crear_usuario", {
+          p_username: candidate,
+          p_password: clave,
+          p_id_rol: rolId,
+          p_id_empleado: empleadoCreado.id_empleado,
+          p_id_estado: 1
+        });
 
-      if (!insertError && insertedUser) {
-        usuarioCreado = Array.isArray(insertedUser) ? insertedUser[0] : insertedUser;
-        finalUsername = candidate;
-        break;
+        if (!insertError && insertedUser) {
+          usuarioCreado = Array.isArray(insertedUser) ? insertedUser[0] : insertedUser;
+          finalUsername = candidate;
+          break;
+        }
+
+        usuarioError = insertError || new Error("No se pudo crear el usuario");
+        const pgCode = insertError?.code;
+        if (pgCode !== "23505") {
+          break;
+        }
       }
 
-      usuarioError = insertError || new Error("No se pudo crear el usuario");
-      const pgCode = insertError?.code;
-      if (pgCode !== "23505") {
-        break;
-      }
-    }
-
-    if (usuarioError) {
-      console.error("Error creando usuario:", usuarioError);
-      if (EMPLEADOS_TABLE) {
-        await supabase.from(EMPLEADOS_TABLE).delete().eq("id_empleado", empleadoCreado.id_empleado);
-      }
-      const pgCode = usuarioError?.code;
-      if (pgCode === "23505") {
-        return res.status(409).json({
-          error: "El nombre de usuario ya existe",
+      if (usuarioError) {
+        console.error("Error creando usuario:", usuarioError);
+        if (EMPLEADOS_TABLE) {
+          await supabase.from(EMPLEADOS_TABLE).delete().eq("id_empleado", empleadoCreado.id_empleado);
+        }
+        const pgCode = usuarioError?.code;
+        if (pgCode === "23505") {
+          return res.status(409).json({
+            error: "El nombre de usuario ya existe",
+            detalle: usuarioError.message || usuarioError.hint || usuarioError
+          });
+        }
+        return res.status(500).json({
+          error: "Error creando usuario vinculado",
           detalle: usuarioError.message || usuarioError.hint || usuarioError
         });
       }
-      return res.status(500).json({
-        error: "Error creando usuario vinculado",
-        detalle: usuarioError.message || usuarioError.hint || usuarioError
-      });
     }
 
     res.json({
       mensaje: "Empleado y usuario registrados correctamente",
       empleado: data,
-      usuario: { ...usuarioCreado, username: finalUsername, contrasena: undefined },
+      usuario: crearUsuario && usuarioCreado ? { ...usuarioCreado, username: finalUsername, contrasena: undefined } : null,
       foto_url: fotoURL
     });
   } catch (err) {
