@@ -25,8 +25,10 @@ function timeToMinutes(timeString) {
 }
 
 async function resolverEstadoEntrada({ id_empleado, fecha, hora_entrada }) {
+  const fallback = { estado: "presente", horario: null };
+
   if (!HORARIOS_TABLE || !id_empleado || !fecha || !hora_entrada) {
-    return "presente";
+    return fallback;
   }
 
   try {
@@ -63,14 +65,16 @@ async function resolverEstadoEntrada({ id_empleado, fecha, hora_entrada }) {
         horaReal !== null &&
         horaReal > horaProgramada + tolerancia
       ) {
-        return "retraso";
+        return { estado: "retraso", horario };
       }
     }
+
+    return { estado: "presente", horario };
   } catch (err) {
     console.error("Error evaluando horario:", err);
   }
 
-  return "presente";
+  return fallback;
 }
 
 export async function registrarEntradaAsistencia({
@@ -97,7 +101,7 @@ export async function registrarEntradaAsistencia({
     return { error: `Campos obligatorios faltantes: ${faltantes.join(", ")}`, status: 400 };
   }
 
-  const estado = await resolverEstadoEntrada({ id_empleado, fecha, hora_entrada });
+  const { estado, horario } = await resolverEstadoEntrada({ id_empleado, fecha, hora_entrada });
 
   const { data, error } = await supabase
     .from(ASISTENCIAS_TABLE)
@@ -121,7 +125,15 @@ export async function registrarEntradaAsistencia({
     return { error: "Error registrando asistencia de entrada" };
   }
 
-  return { data };
+  const enriched = data
+    ? {
+        ...data,
+        hora_programada: horario?.hora_entrada || null,
+        tolerancia_minutos: horario?.tolerancia_minutos ?? null
+      }
+    : null;
+
+  return { data: enriched };
 }
 
 export async function registrarSalidaAsistencia({

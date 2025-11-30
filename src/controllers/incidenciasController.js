@@ -3,64 +3,36 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const ASISTENCIAS_TABLE = process.env.SUPABASE_ASISTENCIAS_TABLE;
+const INCIDENCIAS_TABLE = process.env.SUPABASE_INCIDENCIAS_TABLE || "incidencia";
 
 export async function registrarIncidencia(req, res) {
   try {
-    const { id_asistencia, id_empleado, descripcion, fecha, tipo } = req.body;
+    const { id_asistencia, descripcion, tipo } = req.body;
 
-    if (!descripcion || !tipo) {
-      return res.status(400).json({ error: "descripcion y tipo son obligatorios" });
+    if (!INCIDENCIAS_TABLE) {
+      return res.status(500).json({ error: "Tabla de incidencias no configurada" });
     }
 
-    let empleadoId = id_empleado ? Number(id_empleado) : null;
-    let fechaIncidencia = fecha || null;
-
-    if ((!empleadoId || !fechaIncidencia) && !id_asistencia) {
-      return res.status(400).json({
-        error: "Debe enviar id_empleado y fecha, o bien id_asistencia"
-      });
+    if (!id_asistencia) {
+      return res.status(400).json({ error: "id_asistencia es obligatorio" });
     }
 
-    if ((!empleadoId || !fechaIncidencia) && id_asistencia) {
-      if (!ASISTENCIAS_TABLE) {
-        return res.status(500).json({ error: "Tabla de asistencias no configurada" });
-      }
-
-      const { data: asistencia, error: asistenciaError } = await supabase
-        .from(ASISTENCIAS_TABLE)
-        .select("id_empleado, fecha")
-        .eq("id_asistencia", Number(id_asistencia))
-        .maybeSingle();
-
-      if (asistenciaError) {
-        console.error(asistenciaError);
-        return res.status(500).json({ error: "Error consultando asistencia" });
-      }
-
-      if (!asistencia) {
-        return res.status(404).json({ error: "Asistencia no encontrada" });
-      }
-
-      if (!empleadoId) {
-        empleadoId = asistencia.id_empleado;
-      }
-
-      if (!fechaIncidencia) {
-        fechaIncidencia = asistencia.fecha;
-      }
+    if (!tipo) {
+      return res.status(400).json({ error: "tipo es obligatorio" });
     }
 
-    if (!empleadoId || !fechaIncidencia) {
-      return res.status(400).json({ error: "id_empleado y fecha son obligatorios" });
-    }
-
-    const { data, error } = await supabase.rpc("sp_registrar_incidencia", {
-      p_id_empleado: Number(empleadoId),
-      p_descripcion: descripcion,
-      p_fecha: fechaIncidencia,
-      p_tipo: tipo
-    });
+    const { data, error } = await supabase
+      .from(INCIDENCIAS_TABLE)
+      .insert([
+        {
+          id_asistencia: Number(id_asistencia),
+          tipo,
+          descripcion: descripcion || null,
+          actualizado: true
+        }
+      ])
+      .select()
+      .single();
 
     if (error) {
       console.error(error);
