@@ -82,48 +82,57 @@ async function resolverEstadoEntrada({ id_empleado, fecha, hora_entrada, horario
   return fallback;
 }
 
-function mapAsistenciaError(error, { fallbackMessage, conflictMessage, notFoundMessage }) {
+function mapAsistenciaError(error, { fallbackMessage, conflictMessage, notFoundMessage, includeDebug = false }) {
   console.error(error);
   const message = error?.message || fallbackMessage;
   const hint = (error?.hint || "").toUpperCase();
   const code = error?.code;
+  const baseDebug = includeDebug
+    ? { code: error?.code, message: error?.message, hint: error?.hint, details: error?.details }
+    : undefined;
 
   if (hint.includes("HTTP 403")) {
-    return { error: message, status: 403 };
+    return { error: message, status: 403, debug: baseDebug };
   }
   if (hint.includes("HTTP 404")) {
-    return { error: notFoundMessage || message, status: 404 };
+    return { error: notFoundMessage || message, status: 404, debug: baseDebug };
   }
   if (hint.includes("HTTP 409")) {
-    return { error: conflictMessage, status: 409 };
+    return { error: conflictMessage, status: 409, debug: baseDebug };
   }
 
   if (code === "P0001" && message.toLowerCase().includes("horario")) {
-    return { error: message, status: 403 };
+    return { error: message, status: 403, debug: baseDebug };
   }
   if (code === "P0002") {
-    return { error: notFoundMessage || message, status: 404 };
+    return { error: notFoundMessage || message, status: 404, debug: baseDebug };
   }
   if (code === "23505" || code === "P409") {
-    return { error: conflictMessage, status: 409 };
+    return { error: conflictMessage, status: 409, debug: baseDebug };
   }
 
   if (code === "42704") {
     if (message.includes("P403")) {
-      return { error: "No tienes un horario programado para hoy", status: 403 };
+      return { error: "No tienes un horario programado para hoy", status: 403, debug: baseDebug };
     }
     if (message.includes("P404")) {
       return {
         error: notFoundMessage || "No se encontro una asistencia abierta para ese turno",
-        status: 404
+        status: 404,
+        debug: baseDebug
       };
     }
     if (message.includes("P409")) {
-      return { error: conflictMessage, status: 409 };
+      return { error: conflictMessage, status: 409, debug: baseDebug };
     }
   }
 
-  return { error: fallbackMessage };
+  // Permisos/RLS u otros errores
+  if (code === "42501") {
+    return { error: "Permisos insuficientes para registrar asistencia", status: 403, debug: baseDebug };
+  }
+
+  return { error: fallbackMessage, debug: baseDebug };
 }
 
 export async function registrarEntradaAsistencia({
@@ -158,10 +167,11 @@ export async function registrarEntradaAsistencia({
       p_metodo_registro: metodo_registro || "manual"
     });
 
-    if (error) {
+  if (error) {
       const mapped = mapAsistenciaError(error, {
         fallbackMessage: "Error registrando asistencia de entrada",
-        conflictMessage: "La asistencia de hoy ya fue registrada"
+        conflictMessage: "La asistencia de hoy ya fue registrada",
+        includeDebug: debug
       });
       if (debug) {
         mapped.debug = { code: error.code, message: error.message, hint: error.hint, details: error.details };
@@ -204,11 +214,12 @@ export async function registrarSalidaAsistencia({
       p_numero_turno: Number(numero_turno) || 1
     });
 
-    if (error) {
+  if (error) {
       const mapped = mapAsistenciaError(error, {
         fallbackMessage: "Error registrando salida de asistencia",
         conflictMessage: "Ya se registro la salida de este turno",
-        notFoundMessage: "No se encontro una asistencia abierta para ese empleado/fecha/turno"
+        notFoundMessage: "No se encontro una asistencia abierta para ese empleado/fecha/turno",
+        includeDebug: debug
       });
       if (debug) {
         mapped.debug = { code: error.code, message: error.message, hint: error.hint, details: error.details };
