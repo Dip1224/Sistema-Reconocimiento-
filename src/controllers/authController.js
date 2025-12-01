@@ -43,17 +43,24 @@ export async function login(req, res) {
 
     let empleadoNombre = null;
     let empleadoApellido = null;
+    let empleadoFoto = null;
     let rolNombre = null;
 
     if (userRow.id_empleado && EMPLEADOS_TABLE) {
       const { data: empleadoData } = await supabase
         .from(EMPLEADOS_TABLE)
-        .select("nombre, apellido")
+        .select("*")
         .eq("id_empleado", userRow.id_empleado)
         .single();
 
       empleadoNombre = empleadoData?.nombre ?? null;
       empleadoApellido = empleadoData?.apellido ?? null;
+      empleadoFoto =
+        empleadoData?.foto ||
+        empleadoData?.ruta_imagen ||
+        empleadoData?.foto_url ||
+        empleadoData?.imagen ||
+        null;
     }
 
     if (userRow.id_rol && ROLES_TABLE) {
@@ -84,6 +91,9 @@ export async function login(req, res) {
       rol_nombre: rolNombre,
       empleado_nombre: empleadoNombre,
       empleado_apellido: empleadoApellido,
+      foto: empleadoFoto,
+      ruta_imagen: empleadoFoto,
+      foto_url: empleadoFoto,
       usuario_estado: userRow.id_estado ?? null,
       username: userRow.username,
       token
