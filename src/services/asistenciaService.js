@@ -137,6 +137,9 @@ export async function registrarEntradaAsistencia({
 
   if (error) {
     console.error(error);
+    if (error.code === "23505") {
+      return { error: "La asistencia de hoy ya fue registrada", status: 409 };
+    }
     return { error: "Error registrando asistencia de entrada" };
   }
 
