@@ -23,6 +23,29 @@ Mapeo sugerido de errores a HTTP:
 - `P409` → 409 (duplicado o ya completado).
 - `P0001` → 400/409 según el mensaje.
 
+**Uso en backend (supabase-js)**
+```js
+const { data, error } = await supabase.rpc("fn_registrar_asistencia", {
+  p_id_empleado,
+  p_fecha: fechaISO,     // 'YYYY-MM-DD'
+  p_hora: hora,          // 'HH:MM:SS'
+  p_tipo: "entrada",     // o "salida"
+  p_numero_turno: numero_turno || 1,
+  p_id_dispositivo: id_dispositivo || 1,
+  p_metodo_registro: metodo_registro || "facial"
+});
+
+if (error) {
+  const code = error.code;
+  if (code === "P403") return res.status(403).json({ error: error.message });
+  if (code === "P404") return res.status(404).json({ error: error.message });
+  if (code === "P409") return res.status(409).json({ error: error.message });
+  return res.status(500).json({ error: "Error registrando asistencia" });
+}
+
+return res.json({ accion: data?.[0]?.accion, asistencia: data?.[0] });
+```
+
 ### Endpoints y respuestas
 - Horarios: POST/PUT devuelven 409 si el índice único detecta duplicado.
 - Asistencia: al usar la función transaccional, se captura `unique_violation` o los códigos `P403/P404/P409` y se responde con el HTTP correspondiente.

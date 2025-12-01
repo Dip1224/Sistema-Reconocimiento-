@@ -90,10 +90,6 @@ export async function registrarEntradaAsistencia({
   numero_turno,
   metodo_registro
 }) {
-  if (!ASISTENCIAS_TABLE) {
-    return { error: "Tabla de asistencias no configurada" };
-  }
-
   const faltantes = [];
   if (!id_empleado) faltantes.push("id_empleado");
   if (!id_dispositivo) faltantes.push("id_dispositivo");
@@ -106,52 +102,33 @@ export async function registrarEntradaAsistencia({
     return { error: `Campos obligatorios faltantes: ${faltantes.join(", ")}`, status: 400 };
   }
 
-  const horarioDelDia = await obtenerHorarioPorDia(id_empleado, fecha);
-  if (!horarioDelDia) {
-    return { error: "No tienes un horario programado para hoy", status: 403 };
-  }
+  try {
+    const { data, error } = await supabase.rpc("fn_registrar_asistencia", {
+      p_id_empleado: Number(id_empleado),
+      p_fecha: fecha,
+      p_hora: hora_entrada,
+      p_tipo: "entrada",
+      p_numero_turno: Number(numero_turno) || 1,
+      p_id_dispositivo: Number(id_dispositivo) || 1,
+      p_metodo_registro: metodo_registro || "manual"
+    });
 
-  const { estado, horario } = await resolverEstadoEntrada({
-    id_empleado,
-    fecha,
-    hora_entrada,
-    horarioDelDia
-  });
-
-  const { data, error } = await supabase
-    .from(ASISTENCIAS_TABLE)
-    .insert([
-      {
-        id_empleado,
-        id_dispositivo,
-        fecha,
-        hora_entrada,
-        hora_salida: null,
-        numero_turno,
-        estado,
-        metodo_registro
+    if (error) {
+      console.error(error);
+      if (error.code === "P403") return { error: error.message, status: 403 };
+      if (error.code === "P404") return { error: error.message, status: 404 };
+      if (error.code === "P409" || error.code === "23505") {
+        return { error: "La asistencia de hoy ya fue registrada", status: 409 };
       }
-    ])
-    .select()
-    .single();
-
-  if (error) {
-    console.error(error);
-    if (error.code === "23505") {
-      return { error: "La asistencia de hoy ya fue registrada", status: 409 };
+      return { error: "Error registrando asistencia de entrada" };
     }
+
+    const asistencia = Array.isArray(data) ? data[0] : data;
+    return { data: asistencia };
+  } catch (err) {
+    console.error(err);
     return { error: "Error registrando asistencia de entrada" };
   }
-
-  const enriched = data
-    ? {
-        ...data,
-        hora_programada: horario?.hora_entrada || null,
-        tolerancia_minutos: horario?.tolerancia_minutos ?? null
-      }
-    : null;
-
-  return { data: enriched };
 }
 
 export async function registrarSalidaAsistencia({
@@ -160,10 +137,6 @@ export async function registrarSalidaAsistencia({
   hora_salida,
   numero_turno
 }) {
-  if (!ASISTENCIAS_TABLE) {
-    return { error: "Tabla de asistencias no configurada" };
-  }
-
   if (!id_empleado || !fecha || !hora_salida || !numero_turno) {
     return {
       error: "id_empleado, fecha, hora_salida y numero_turno son obligatorios",
@@ -171,27 +144,31 @@ export async function registrarSalidaAsistencia({
     };
   }
 
-  const { data, error } = await supabase
-    .from(ASISTENCIAS_TABLE)
-    .update({
-      hora_salida,
-      fecha_modificacion: new Date().toISOString()
-    })
-    .eq("id_empleado", id_empleado)
-    .eq("fecha", fecha)
-    .eq("numero_turno", numero_turno)
-    .is("hora_salida", null)
-    .select()
-    .single();
+  try {
+    const { data, error } = await supabase.rpc("fn_registrar_asistencia", {
+      p_id_empleado: Number(id_empleado),
+      p_fecha: fecha,
+      p_hora: hora_salida,
+      p_tipo: "salida",
+      p_numero_turno: Number(numero_turno) || 1
+    });
 
-  if (error) {
-    console.error(error);
+    if (error) {
+      console.error(error);
+      if (error.code === "P403") return { error: error.message, status: 403 };
+      if (error.code === "P404") {
+        return { error: "No se encontro una asistencia abierta para ese empleado/fecha/turno", status: 404 };
+      }
+      if (error.code === "P409" || error.code === "23505") {
+        return { error: "Ya se registro la salida de este turno", status: 409 };
+      }
+      return { error: "Error registrando salida de asistencia" };
+    }
+
+    const asistencia = Array.isArray(data) ? data[0] : data;
+    return { data: asistencia };
+  } catch (err) {
+    console.error(err);
     return { error: "Error registrando salida de asistencia" };
   }
-
-  if (!data) {
-    return { error: "No se encontró una asistencia abierta para ese empleado/fecha/turno", status: 404 };
-  }
-
-  return { data };
 }
