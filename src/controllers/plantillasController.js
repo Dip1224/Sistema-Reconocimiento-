@@ -458,6 +458,12 @@ export async function identificarPersona(req, res) {
       });
 
       if (entradaResult.error) {
+        console.error("[identificarPersona] Error registrando entrada", {
+          id_empleado: candidatoFinal,
+          fecha,
+          hora,
+          detalle: entradaResult
+        });
         return res.status(entradaResult.status || 500).json({ error: entradaResult.error });
       }
 
@@ -505,6 +511,12 @@ export async function identificarPersona(req, res) {
       });
 
       if (salidaResult.error) {
+        console.error("[identificarPersona] Error registrando salida", {
+          id_empleado: candidatoFinal,
+          fecha,
+          hora,
+          detalle: salidaResult
+        });
         return res.status(salidaResult.status || 500).json({ error: salidaResult.error });
       }
 
