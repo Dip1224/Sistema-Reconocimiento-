@@ -24,7 +24,32 @@ function timeToMinutes(timeString) {
   return hours * 60 + minutes + secs / 60;
 }
 
-async function resolverEstadoEntrada({ id_empleado, fecha, hora_entrada }) {
+async function obtenerHorarioPorDia(id_empleado, fechaISO) {
+  if (!HORARIOS_TABLE || !id_empleado || !fechaISO) return null;
+  try {
+    const diaSemana = obtenerDiaSemana(fechaISO);
+    if (diaSemana === null) return null;
+
+    const { data, error } = await supabase
+      .from(HORARIOS_TABLE)
+      .select("hora_entrada, hora_salida, tolerancia_minutos")
+      .eq("id_empleado", id_empleado)
+      .eq("dia_semana", diaSemana)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error obteniendo horario por dia:", error);
+      return null;
+    }
+
+    return data || null;
+  } catch (err) {
+    console.error("Error obteniendo horario por dia:", err);
+    return null;
+  }
+}
+
+async function resolverEstadoEntrada({ id_empleado, fecha, hora_entrada, horarioDelDia }) {
   const fallback = { estado: "presente", horario: null };
 
   if (!HORARIOS_TABLE || !id_empleado || !fecha || !hora_entrada) {
@@ -32,29 +57,9 @@ async function resolverEstadoEntrada({ id_empleado, fecha, hora_entrada }) {
   }
 
   try {
-    const diaSemana = obtenerDiaSemana(fecha);
-    let horario = null;
+    const horario = horarioDelDia || (await obtenerHorarioPorDia(id_empleado, fecha));
 
-    if (diaSemana !== null) {
-      const { data } = await supabase
-        .from(HORARIOS_TABLE)
-        .select("hora_entrada, tolerancia_minutos")
-        .eq("id_empleado", id_empleado)
-        .eq("dia_semana", diaSemana)
-        .maybeSingle();
-      horario = data;
-    }
-
-    if (!horario) {
-      const { data } = await supabase
-        .from(HORARIOS_TABLE)
-        .select("hora_entrada, tolerancia_minutos")
-        .eq("id_empleado", id_empleado)
-        .order("dia_semana", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      horario = data;
-    }
+    if (!horario) return fallback;
 
     if (horario?.hora_entrada) {
       const tolerancia = Number(horario.tolerancia_minutos) || 0;
@@ -101,7 +106,17 @@ export async function registrarEntradaAsistencia({
     return { error: `Campos obligatorios faltantes: ${faltantes.join(", ")}`, status: 400 };
   }
 
-  const { estado, horario } = await resolverEstadoEntrada({ id_empleado, fecha, hora_entrada });
+  const horarioDelDia = await obtenerHorarioPorDia(id_empleado, fecha);
+  if (!horarioDelDia) {
+    return { error: "No tienes un horario programado para hoy", status: 403 };
+  }
+
+  const { estado, horario } = await resolverEstadoEntrada({
+    id_empleado,
+    fecha,
+    hora_entrada,
+    horarioDelDia
+  });
 
   const { data, error } = await supabase
     .from(ASISTENCIAS_TABLE)

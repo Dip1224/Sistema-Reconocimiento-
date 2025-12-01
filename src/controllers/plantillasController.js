@@ -79,34 +79,50 @@ function minutesToHHMM(totalMinutes) {
   return `${hh}:${mm}`;
 }
 
+async function obtenerHorarioDelDia(id_empleado, fechaISO) {
+  if (!HORARIOS_TABLE || !id_empleado || !fechaISO) return null;
+  try {
+    const diaSemana = obtenerDiaSemana(fechaISO);
+    if (diaSemana === null) return null;
+
+    const { data, error } = await supabase
+      .from(HORARIOS_TABLE)
+      .select("hora_entrada, hora_salida, tolerancia_minutos")
+      .eq("id_empleado", id_empleado)
+      .eq("dia_semana", diaSemana)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error obteniendo horario del dia:", error);
+      return null;
+    }
+
+    return data || null;
+  } catch (err) {
+    console.error("Error obteniendo horario del dia:", err);
+    return null;
+  }
+}
+
 async function obtenerHorarioSalida(id_empleado, fechaISO) {
   if (!HORARIOS_TABLE || !id_empleado || !fechaISO) return null;
   try {
     const diaSemana = obtenerDiaSemana(fechaISO);
-    let horario = null;
+    if (diaSemana === null) return null;
 
-    if (diaSemana !== null) {
-      const { data } = await supabase
-        .from(HORARIOS_TABLE)
-        .select("hora_salida, tolerancia_minutos")
-        .eq("id_empleado", id_empleado)
-        .eq("dia_semana", diaSemana)
-        .maybeSingle();
-      horario = data;
+    const { data, error } = await supabase
+      .from(HORARIOS_TABLE)
+      .select("hora_salida, tolerancia_minutos")
+      .eq("id_empleado", id_empleado)
+      .eq("dia_semana", diaSemana)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error obteniendo horario de salida:", error);
+      return null;
     }
 
-    if (!horario) {
-      const { data } = await supabase
-        .from(HORARIOS_TABLE)
-        .select("hora_salida, tolerancia_minutos")
-        .eq("id_empleado", id_empleado)
-        .order("dia_semana", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      horario = data;
-    }
-
-    return horario || null;
+    return data || null;
   } catch (err) {
     console.error("Error obteniendo horario de salida:", err);
     return null;
@@ -410,6 +426,16 @@ export async function identificarPersona(req, res) {
       String(ahora.getMinutes()).padStart(2, "0"),
       String(ahora.getSeconds()).padStart(2, "0")
     ].join(":");
+    const horarioDelDia = await obtenerHorarioDelDia(candidatoFinal, fecha);
+
+    if (!horarioDelDia) {
+      return res.status(403).json({
+        identificado: true,
+        error: "No tienes un horario programado para hoy",
+        empleado,
+        accion: "rechazado"
+      });
+    }
 
     const { data: asistencias } = await supabase
       .from(ASISTENCIA_TABLE)
