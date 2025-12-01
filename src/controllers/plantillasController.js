@@ -35,6 +35,19 @@ const FACE_RELAXED_MARGIN = parseEnvNumber(
 const FACE_MARGIN_RELAX_FACTOR = parseEnvNumber(process.env.FACE_MARGIN_RELAX_FACTOR, 0.5);
 const FACE_MIN_DYNAMIC_MARGIN = parseEnvNumber(process.env.FACE_MIN_DYNAMIC_MARGIN, 0.02);
 
+function buildClientDate({ clientTimestamp, timezoneOffsetMinutes }) {
+  const utcMs = Number.isFinite(Number(clientTimestamp)) ? Number(clientTimestamp) : Date.now();
+  const offsetMinutes = Number.isFinite(Number(timezoneOffsetMinutes))
+    ? Number(timezoneOffsetMinutes)
+    : null;
+  const localMs = offsetMinutes !== null ? utcMs - offsetMinutes * 60 * 1000 : utcMs;
+  const date = new Date(localMs);
+  if (Number.isNaN(date.getTime())) {
+    return new Date();
+  }
+  return date;
+}
+
 function normalizeEmbedding(vector = []) {
   if (!Array.isArray(vector) || !vector.length) return [];
   const parsed = vector.map(value => Number(value) || 0);
@@ -318,9 +331,20 @@ export async function identificarPersona(req, res) {
       return res.status(500).json({ error: "Error obteniendo empleado" });
     }
 
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split("T")[0];
-    const hora = ahora.toTimeString().split(" ")[0];
+    const ahora = buildClientDate({
+      clientTimestamp: req.body?.clientTimestamp,
+      timezoneOffsetMinutes: req.body?.timezoneOffsetMinutes
+    });
+    const fecha = [
+      ahora.getFullYear(),
+      String(ahora.getMonth() + 1).padStart(2, "0"),
+      String(ahora.getDate()).padStart(2, "0")
+    ].join("-");
+    const hora = [
+      String(ahora.getHours()).padStart(2, "0"),
+      String(ahora.getMinutes()).padStart(2, "0"),
+      String(ahora.getSeconds()).padStart(2, "0")
+    ].join(":");
 
     const { data: asistencias } = await supabase
       .from(ASISTENCIA_TABLE)
