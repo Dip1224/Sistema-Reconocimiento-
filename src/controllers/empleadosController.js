@@ -198,3 +198,87 @@ export async function registrarEmpleado(req, res) {
     res.status(500).json({ error: "Error interno" });
   }
 }
+
+export async function actualizarEmpleado(req, res) {
+  try {
+    if (!EMPLEADOS_TABLE) {
+      return res.status(500).json({ error: "Tabla de empleados no configurada" });
+    }
+
+    const idEmpleado = Number(req.params.id_empleado);
+    if (!idEmpleado) {
+      return res.status(400).json({ error: "id_empleado invalido" });
+    }
+
+    const { ci, nombre, apellido, cargo, id_departamento, fecha_ingreso } = req.body || {};
+    const updateData = {};
+
+    if (ci !== undefined) updateData.ci = ci;
+    if (nombre !== undefined) updateData.nombre = nombre;
+    if (apellido !== undefined) updateData.apellido = apellido;
+    if (cargo !== undefined) updateData.cargo = cargo;
+    if (id_departamento !== undefined) updateData.id_departamento = Number(id_departamento);
+    if (fecha_ingreso !== undefined) updateData.fecha_ingreso = fecha_ingreso;
+
+    if (!Object.keys(updateData).length) {
+      return res.status(400).json({ error: "No hay campos para actualizar" });
+    }
+
+    const { data, error } = await supabase
+      .from(EMPLEADOS_TABLE)
+      .update(updateData)
+      .eq("id_empleado", idEmpleado)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(error);
+      const status = error.code === "23505" ? 409 : 500;
+      return res.status(status).json({ error: "Error actualizando empleado", detalle: error.message });
+    }
+
+    return res.json({ mensaje: "Empleado actualizado", empleado: data });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Error interno" });
+  }
+}
+
+export async function eliminarEmpleado(req, res) {
+  try {
+    if (!EMPLEADOS_TABLE) {
+      return res.status(500).json({ error: "Tabla de empleados no configurada" });
+    }
+
+    const idEmpleado = Number(req.params.id_empleado);
+    if (!idEmpleado) {
+      return res.status(400).json({ error: "id_empleado invalido" });
+    }
+
+    // Borrar usuario vinculado si existe
+    if (USUARIOS_TABLE) {
+      await supabase.from(USUARIOS_TABLE).delete().eq("id_empleado", idEmpleado);
+    }
+
+    const { data, error } = await supabase
+      .from(EMPLEADOS_TABLE)
+      .delete()
+      .eq("id_empleado", idEmpleado)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ error: "Error eliminando empleado" });
+    }
+
+    if (!data) {
+      return res.status(404).json({ error: "Empleado no encontrado" });
+    }
+
+    return res.json({ mensaje: "Empleado eliminado", empleado: data });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Error interno" });
+  }
+}

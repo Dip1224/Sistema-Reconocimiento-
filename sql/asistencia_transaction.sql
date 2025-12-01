@@ -27,6 +27,9 @@ declare
   v_horario record;
   v_asistencia record;
   v_dia_semana integer;
+  v_estado text := 'presente';
+  v_tolerancia integer := 0;
+  v_limite time without time zone;
 begin
   if p_tipo not in ('entrada','salida') then
     raise exception 'Tipo invalido. Use entrada o salida'
@@ -61,6 +64,13 @@ begin
         using errcode = '23505', hint = 'HTTP 409';
     end if;
 
+    -- calcular estado (retraso/presente) segun horario y tolerancia
+    v_tolerancia := coalesce(v_horario.tolerancia_minutos, 0);
+    v_limite := v_horario.hora_entrada + make_interval(mins => v_tolerancia);
+    if p_hora > v_limite then
+      v_estado := 'retraso';
+    end if;
+
     insert into asistencia (
       id_empleado,
       fecha,
@@ -76,7 +86,7 @@ begin
       p_hora,
       null,
       coalesce(p_numero_turno, 1),
-      'presente',
+      v_estado,
       p_metodo_registro,
       p_id_dispositivo
     )
@@ -89,9 +99,9 @@ begin
       v_asistencia.fecha,
       v_asistencia.hora_entrada,
       v_asistencia.hora_salida,
-      v_asistencia.numero_turno,
-      v_asistencia.estado,
-      v_asistencia.metodo_registro;
+      v_asistencia.numero_turno::integer,
+      v_asistencia.estado::text,
+      v_asistencia.metodo_registro::text;
     return;
   end if;
 
@@ -119,9 +129,9 @@ begin
     v_asistencia.fecha,
     v_asistencia.hora_entrada,
     v_asistencia.hora_salida,
-    v_asistencia.numero_turno,
-    v_asistencia.estado,
-    v_asistencia.metodo_registro;
+    v_asistencia.numero_turno::integer,
+    v_asistencia.estado::text,
+    v_asistencia.metodo_registro::text;
 end;
 $$ language plpgsql;
 
