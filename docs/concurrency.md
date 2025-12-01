@@ -1,27 +1,27 @@
 ## Transacciones y concurrencia
 
-Estrategia: concurrencia optimista con claves únicas y validación previa. Las operaciones críticas se encapsulan en funciones/consultas que se ejecutan de forma atómica y devuelven códigos claros.
+Estrategia: concurrencia optimista con claves unicas y validacion previa. Las operaciones criticas se encapsulan en funciones/consultas atomicas y devuelven codigos claros para el backend.
 
-### Índices únicos (integridad + contención de duplicados)
-- `horario(id_empleado, dia_semana)` → evita dos horarios el mismo día por empleado.
-- `asistencia(id_empleado, fecha, numero_turno)` → evita duplicar la asistencia de un turno diario.
+### Indices unicos (integridad + contencion de duplicados)
+- `horario(id_empleado, dia_semana)` -> evita dos horarios el mismo dia por empleado.
+- `asistencia(id_empleado, fecha, numero_turno)` -> evita duplicar la asistencia de un turno diario.
 Script: `backend/sql/concurrency.sql`.
 
-### Función transaccional de asistencia
+### Funcion transaccional de asistencia
 Archivo: `backend/sql/asistencia_transaction.sql`.
 
 Flujo:
-1. Valida que exista horario para el día (isodow 1-7); si no, lanza error `P403`.
-2. Selecciona asistencia del día/turno `FOR UPDATE`.
-3. Si `tipo=entrada`: si ya existe, `P409`; si no, inserta.
-4. Si `tipo=salida`: si no existe, `P404`; si ya tiene salida, `P409`; si no, actualiza.
-5. Devuelve la asistencia y la acción (`entrada`/`salida`).
+1. Valida que exista horario para el dia (isodow 1-7); si no, lanza 403.
+2. Selecciona asistencia del dia/turno `FOR UPDATE`.
+3. Si `tipo=entrada`: si ya existe, 409; si no, inserta.
+4. Si `tipo=salida`: si no existe, 404; si ya tiene salida, 409; si no, actualiza.
+5. Devuelve la asistencia y la accion (`entrada`/`salida`).
 
-Mapeo sugerido de errores a HTTP:
-- `P403` → 403 (sin horario).
-- `P404` → 404 (no hay asistencia abierta para ese turno).
-- `P409` → 409 (duplicado o ya completado).
-- `P0001` → 400/409 según el mensaje.
+Codigos SQLSTATE/hints usados por la funcion:
+- 22023 + hint `HTTP 400`: tipo invalido.
+- P0001 + hint `HTTP 403`: no hay horario para ese dia.
+- P0002 + hint `HTTP 404`: no existe asistencia abierta para ese turno.
+- 23505 + hint `HTTP 409`: duplicado o ya registrado.
 
 **Uso en backend (supabase-js)**
 ```js
@@ -36,10 +36,10 @@ const { data, error } = await supabase.rpc("fn_registrar_asistencia", {
 });
 
 if (error) {
-  const code = error.code;
-  if (code === "P403") return res.status(403).json({ error: error.message });
-  if (code === "P404") return res.status(404).json({ error: error.message });
-  if (code === "P409") return res.status(409).json({ error: error.message });
+  const hint = (error.hint || "").toUpperCase();
+  if (hint.includes("HTTP 403")) return res.status(403).json({ error: error.message });
+  if (hint.includes("HTTP 404")) return res.status(404).json({ error: error.message });
+  if (hint.includes("HTTP 409")) return res.status(409).json({ error: "La asistencia ya fue registrada" });
   return res.status(500).json({ error: "Error registrando asistencia" });
 }
 
@@ -47,15 +47,15 @@ return res.json({ accion: data?.[0]?.accion, asistencia: data?.[0] });
 ```
 
 ### Endpoints y respuestas
-- Horarios: POST/PUT devuelven 409 si el índice único detecta duplicado.
-- Asistencia: al usar la función transaccional, se captura `unique_violation` o los códigos `P403/P404/P409` y se responde con el HTTP correspondiente.
+- Horarios: POST/PUT devuelven 409 si el indice unico detecta duplicado.
+- Asistencia: al usar la funcion transaccional, se captura el hint/SQLSTATE y se responde con el HTTP correspondiente.
 
-### Cómo probar la concurrencia (manual)
-1. Crear un horario y luego intentar crear otro mismo día/empleado → debe devolver 409.
-2. Marcar entrada y volver a marcar entrada mismo día/turno → 409.
-3. Marcar salida sin entrada → 404.
-4. Marcar salida dos veces → 409.
+### Como probar la concurrencia (manual)
+1. Crear un horario y luego intentar crear otro mismo dia/empleado -> debe devolver 409.
+2. Marcar entrada y volver a marcar entrada mismo dia/turno -> 409.
+3. Marcar salida sin entrada -> 404.
+4. Marcar salida dos veces -> 409.
 
-### Notas de implementación (backend)
-- Al llamar la RPC `fn_registrar_asistencia` desde Node, capturar `error.code` y mapear según arriba.  
-- Mantener `numero_turno` en la petición para soportar múltiples turnos; si solo hay uno, usa 1 por defecto.
+### Notas de implementacion (backend)
+- Al llamar la RPC `fn_registrar_asistencia` desde Node, mapear primero por `error.hint` (HTTP 400/403/404/409) y luego por `error.code` (`P0001`, `P0002`, `23505`).
+- Mantener `numero_turno` en la peticion para soportar multiples turnos; si solo hay uno, usa 1 por defecto.

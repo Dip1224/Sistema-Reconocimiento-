@@ -1,5 +1,5 @@
--- Función transaccional para registrar entrada/salida de asistencia
--- Maneja concurrencia usando SELECT ... FOR UPDATE y respeta el índice único
+-- Funcion transaccional para registrar entrada/salida de asistencia
+-- Maneja concurrencia usando SELECT ... FOR UPDATE y respeta el indice unico
 -- (id_empleado, fecha, numero_turno) en la tabla asistencia.
 -- Ajusta nombres de tabla/columna si tu esquema difiere.
 
@@ -29,7 +29,8 @@ declare
   v_dia_semana integer;
 begin
   if p_tipo not in ('entrada','salida') then
-    raise exception 'Tipo invalido. Use entrada o salida' using errcode = 'P0001';
+    raise exception 'Tipo invalido. Use entrada o salida'
+      using errcode = '22023', hint = 'HTTP 400';
   end if;
 
   -- validar horario del dia (1=lunes .. 7=domingo)
@@ -41,7 +42,8 @@ begin
     and h.dia_semana = v_dia_semana;
 
   if not found then
-    raise exception 'No tienes un horario programado para hoy' using errcode = 'P403';
+    raise exception 'No tienes un horario programado para hoy'
+      using errcode = 'P0001', hint = 'HTTP 403';
   end if;
 
   -- bloquear asistencia del dia/turno
@@ -55,7 +57,8 @@ begin
 
   if p_tipo = 'entrada' then
     if found then
-      raise exception 'La asistencia de hoy ya fue registrada' using errcode = 'P409';
+      raise exception 'La asistencia de hoy ya fue registrada'
+        using errcode = '23505', hint = 'HTTP 409';
     end if;
 
     insert into asistencia (
@@ -94,11 +97,13 @@ begin
 
   -- salida
   if not found then
-    raise exception 'No hay una asistencia abierta para este turno' using errcode = 'P404';
+    raise exception 'No hay una asistencia abierta para este turno'
+      using errcode = 'P0002', hint = 'HTTP 404';
   end if;
 
   if v_asistencia.hora_salida is not null then
-    raise exception 'Ya se registro la salida de este turno' using errcode = 'P409';
+    raise exception 'Ya se registro la salida de este turno'
+      using errcode = '23505', hint = 'HTTP 409';
   end if;
 
   update asistencia
@@ -121,7 +126,7 @@ end;
 $$ language plpgsql;
 
 -- Notas de manejo de errores:
---  * P403: sin horario => mapear a HTTP 403.
---  * P404: sin asistencia abierta => mapear a HTTP 404.
---  * P409: duplicado/ya registrado => mapear a HTTP 409.
---  * P0001: validaciones varias => mapear a 400/409 segun mensaje.
+--  * HTTP 403: sin horario => errcode P0001 con hint.
+--  * HTTP 404: sin asistencia abierta => errcode P0002 con hint.
+--  * HTTP 409: duplicado/ya registrado => errcode 23505 con hint.
+--  * 22023: tipo invalido => mapear a 400.

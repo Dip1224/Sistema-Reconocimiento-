@@ -82,6 +82,50 @@ async function resolverEstadoEntrada({ id_empleado, fecha, hora_entrada, horario
   return fallback;
 }
 
+function mapAsistenciaError(error, { fallbackMessage, conflictMessage, notFoundMessage }) {
+  console.error(error);
+  const message = error?.message || fallbackMessage;
+  const hint = (error?.hint || "").toUpperCase();
+  const code = error?.code;
+
+  if (hint.includes("HTTP 403")) {
+    return { error: message, status: 403 };
+  }
+  if (hint.includes("HTTP 404")) {
+    return { error: notFoundMessage || message, status: 404 };
+  }
+  if (hint.includes("HTTP 409")) {
+    return { error: conflictMessage, status: 409 };
+  }
+
+  if (code === "P0001" && message.toLowerCase().includes("horario")) {
+    return { error: message, status: 403 };
+  }
+  if (code === "P0002") {
+    return { error: notFoundMessage || message, status: 404 };
+  }
+  if (code === "23505" || code === "P409") {
+    return { error: conflictMessage, status: 409 };
+  }
+
+  if (code === "42704") {
+    if (message.includes("P403")) {
+      return { error: "No tienes un horario programado para hoy", status: 403 };
+    }
+    if (message.includes("P404")) {
+      return {
+        error: notFoundMessage || "No se encontro una asistencia abierta para ese turno",
+        status: 404
+      };
+    }
+    if (message.includes("P409")) {
+      return { error: conflictMessage, status: 409 };
+    }
+  }
+
+  return { error: fallbackMessage };
+}
+
 export async function registrarEntradaAsistencia({
   id_empleado,
   id_dispositivo,
@@ -114,13 +158,10 @@ export async function registrarEntradaAsistencia({
     });
 
     if (error) {
-      console.error(error);
-      if (error.code === "P403") return { error: error.message, status: 403 };
-      if (error.code === "P404") return { error: error.message, status: 404 };
-      if (error.code === "P409" || error.code === "23505") {
-        return { error: "La asistencia de hoy ya fue registrada", status: 409 };
-      }
-      return { error: "Error registrando asistencia de entrada" };
+      return mapAsistenciaError(error, {
+        fallbackMessage: "Error registrando asistencia de entrada",
+        conflictMessage: "La asistencia de hoy ya fue registrada"
+      });
     }
 
     const asistencia = Array.isArray(data) ? data[0] : data;
@@ -154,15 +195,11 @@ export async function registrarSalidaAsistencia({
     });
 
     if (error) {
-      console.error(error);
-      if (error.code === "P403") return { error: error.message, status: 403 };
-      if (error.code === "P404") {
-        return { error: "No se encontro una asistencia abierta para ese empleado/fecha/turno", status: 404 };
-      }
-      if (error.code === "P409" || error.code === "23505") {
-        return { error: "Ya se registro la salida de este turno", status: 409 };
-      }
-      return { error: "Error registrando salida de asistencia" };
+      return mapAsistenciaError(error, {
+        fallbackMessage: "Error registrando salida de asistencia",
+        conflictMessage: "Ya se registro la salida de este turno",
+        notFoundMessage: "No se encontro una asistencia abierta para ese empleado/fecha/turno"
+      });
     }
 
     const asistencia = Array.isArray(data) ? data[0] : data;
