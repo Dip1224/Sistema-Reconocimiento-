@@ -132,7 +132,8 @@ export async function registrarEntradaAsistencia({
   fecha,
   hora_entrada,
   numero_turno,
-  metodo_registro
+  metodo_registro,
+  debug = false
 }) {
   const faltantes = [];
   if (!id_empleado) faltantes.push("id_empleado");
@@ -158,17 +159,25 @@ export async function registrarEntradaAsistencia({
     });
 
     if (error) {
-      return mapAsistenciaError(error, {
+      const mapped = mapAsistenciaError(error, {
         fallbackMessage: "Error registrando asistencia de entrada",
         conflictMessage: "La asistencia de hoy ya fue registrada"
       });
+      if (debug) {
+        mapped.debug = { code: error.code, message: error.message, hint: error.hint, details: error.details };
+      }
+      return mapped;
     }
 
     const asistencia = Array.isArray(data) ? data[0] : data;
     return { data: asistencia };
   } catch (err) {
     console.error(err);
-    return { error: "Error registrando asistencia de entrada" };
+    const result = { error: "Error registrando asistencia de entrada" };
+    if (debug) {
+      result.debug = { message: err.message };
+    }
+    return result;
   }
 }
 
@@ -176,7 +185,8 @@ export async function registrarSalidaAsistencia({
   id_empleado,
   fecha,
   hora_salida,
-  numero_turno
+  numero_turno,
+  debug = false
 }) {
   if (!id_empleado || !fecha || !hora_salida || !numero_turno) {
     return {
@@ -195,17 +205,25 @@ export async function registrarSalidaAsistencia({
     });
 
     if (error) {
-      return mapAsistenciaError(error, {
+      const mapped = mapAsistenciaError(error, {
         fallbackMessage: "Error registrando salida de asistencia",
         conflictMessage: "Ya se registro la salida de este turno",
         notFoundMessage: "No se encontro una asistencia abierta para ese empleado/fecha/turno"
       });
+      if (debug) {
+        mapped.debug = { code: error.code, message: error.message, hint: error.hint, details: error.details };
+      }
+      return mapped;
     }
 
     const asistencia = Array.isArray(data) ? data[0] : data;
     return { data: asistencia };
   } catch (err) {
     console.error(err);
-    return { error: "Error registrando salida de asistencia" };
+    const result = { error: "Error registrando salida de asistencia" };
+    if (debug) {
+      result.debug = { message: err.message };
+    }
+    return result;
   }
 }

@@ -454,7 +454,8 @@ export async function identificarPersona(req, res) {
         fecha,
         hora_entrada: hora,
         numero_turno: 1,
-        metodo_registro: "facial"
+        metodo_registro: "facial",
+        debug: debugMode
       });
 
       if (entradaResult.error) {
@@ -464,7 +465,10 @@ export async function identificarPersona(req, res) {
           hora,
           detalle: entradaResult
         });
-        return res.status(entradaResult.status || 500).json({ error: entradaResult.error });
+        return res.status(entradaResult.status || 500).json({
+          error: entradaResult.error,
+          debug: debugMode ? entradaResult.debug : undefined
+        });
       }
 
       return res.json({
@@ -507,7 +511,8 @@ export async function identificarPersona(req, res) {
         id_empleado: candidatoFinal,
         fecha,
         hora_salida: hora,
-        numero_turno: asistenciaHoy.numero_turno || 1
+        numero_turno: asistenciaHoy.numero_turno || 1,
+        debug: debugMode
       });
 
       if (salidaResult.error) {
@@ -517,7 +522,10 @@ export async function identificarPersona(req, res) {
           hora,
           detalle: salidaResult
         });
-        return res.status(salidaResult.status || 500).json({ error: salidaResult.error });
+        return res.status(salidaResult.status || 500).json({
+          error: salidaResult.error,
+          debug: debugMode ? salidaResult.debug : undefined
+        });
       }
 
       return res.json({
