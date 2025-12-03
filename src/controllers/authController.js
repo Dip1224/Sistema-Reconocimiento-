@@ -1,6 +1,7 @@
 import { supabase } from "../supabase.js";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import bcrypt from "bcryptjs";
 
 dotenv.config();
 
@@ -101,5 +102,48 @@ export async function login(req, res) {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Error interno" });
+  }
+}
+
+export async function changePassword(req, res) {
+  try {
+    const { username, current_password: currentPassword, new_password: newPassword } = req.body;
+
+    if (!username || !currentPassword || !newPassword) {
+      return res.status(400).json({ error: "username, current_password y new_password son obligatorios" });
+    }
+
+    // Verificar contraseña actual
+    const { data: isValid, error: validateError } = await supabase.rpc("fn_validar_login", {
+      p_username: username,
+      p_password: currentPassword
+    });
+
+    if (validateError) {
+      console.error(validateError);
+      return res.status(500).json({ error: "Error validando la contraseña actual" });
+    }
+
+    if (isValid !== true) {
+      return res.status(401).json({ error: "La contraseña actual es incorrecta" });
+    }
+
+    // Generar hash bcrypt compatible con pgcrypto/crypt('bf')
+    const hashed = await bcrypt.hash(newPassword, 10);
+
+    const { error: updateError } = await supabase
+      .from(USUARIOS_TABLE)
+      .update({ contrasena: hashed })
+      .eq("username", username);
+
+    if (updateError) {
+      console.error(updateError);
+      return res.status(500).json({ error: "No se pudo actualizar la contraseña" });
+    }
+
+    return res.json({ success: true, message: "Contraseña actualizada" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Error interno" });
   }
 }
