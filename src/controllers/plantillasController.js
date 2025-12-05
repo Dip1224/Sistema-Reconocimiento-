@@ -471,12 +471,35 @@ export async function identificarPersona(req, res) {
         });
       }
 
+      const horaProgramadaEntrada = horarioDelDia?.hora_entrada || null;
+      const toleranciaEntrada = Number(horarioDelDia?.tolerancia_minutos);
+      const horaProgramadaMin = timeToMinutes(horaProgramadaEntrada);
+      const horaRegistroMin = timeToMinutes(entradaResult.data?.hora_entrada || hora);
+      const retrasoMinutos =
+        horaProgramadaMin !== null && horaRegistroMin !== null
+          ? Math.max(0, Math.round(horaRegistroMin - horaProgramadaMin))
+          : null;
+
+      const horarioInfo = {
+        hora_programada: horaProgramadaEntrada,
+        tolerancia_minutos: Number.isFinite(toleranciaEntrada) ? toleranciaEntrada : null
+      };
+
+      const asistenciaPayload = {
+        ...entradaResult.data,
+        hora_programada: horarioInfo.hora_programada,
+        tolerancia_minutos: horarioInfo.tolerancia_minutos,
+        hora_registro: entradaResult.data?.hora_entrada || hora,
+        retraso_minutos: retrasoMinutos
+      };
+
       return res.json({
         identificado: true,
         accion: "entrada",
         empleado,
-        asistencia: entradaResult.data,
-        estado: entradaResult.data?.estado || null,
+        asistencia: asistenciaPayload,
+        horario: horarioInfo,
+        estado: asistenciaPayload?.estado || null,
         score: firstEvaluation.bestScore,
         confidence: firstEvaluation.confidence,
         coincidencias: debugMode ? firstEvaluation.coincidencias : undefined,
